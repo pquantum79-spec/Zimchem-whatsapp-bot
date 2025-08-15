@@ -1,4 +1,3 @@
-
 from flask import Flask, request, jsonify, render_template_string
 import openai
 import os
@@ -9,7 +8,8 @@ app = Flask(__name__)
 
 class ZimChemBot:
     def __init__(self):
-        self.client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+        # Fixed OpenAI client initialization
+        openai.api_key = os.getenv('OPENAI_API_KEY')
         self.conversations = {}
         
         self.system_message = """You are ZimChem AI, an expert chemistry assistant. You help with:
@@ -46,8 +46,8 @@ If analyzing images, describe what you see clearly before providing chemical ins
         try:
             self.add_to_conversation(user_id, "user", f"[Image uploaded] {user_message}")
             
-            response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
+            response = openai.ChatCompletion.create(
+                model="gpt-4-vision-preview",
                 messages=[
                     {"role": "system", "content": self.system_message},
                     {
@@ -76,7 +76,7 @@ If analyzing images, describe what you see clearly before providing chemical ins
             self.add_to_conversation(user_id, "user", user_message)
             messages = self.get_conversation_history(user_id)
             
-            response = self.client.chat.completions.create(
+            response = openai.ChatCompletion.create(
                 model="gpt-3.5-turbo",
                 messages=messages,
                 max_tokens=800,
@@ -108,14 +108,13 @@ def home():
             .test-form { background: #f8f9fa; padding: 20px; border-radius: 5px; }
             input[type="text"] { width: 70%; padding: 10px; margin: 5px; }
             button { padding: 10px 20px; background: #3498db; color: white; border: none; border-radius: 5px; }
-            .response { background: #e8f5e8; padding: 15px; margin: 10px 0; border-radius: 5px; }
         </style>
     </head>
     <body>
         <div class="header">
             <h1>🧪 ZimChem WhatsApp Bot</h1>
             <p>Status: <span class="status">Running</span></p>
-            <p>Cost-optimized: GPT-3.5 for text, GPT-4o-mini for images</p>
+            <p>OpenAI API: ''' + ('✅ Connected' if os.getenv('OPENAI_API_KEY') else '❌ Missing API Key') + '''</p>
         </div>
         
         <div class="test-form">
@@ -128,15 +127,9 @@ def home():
         </div>
         
         <div class="endpoint">
-            <h2>📱 WhatsApp Integration</h2>
-            <p><strong>Main Endpoint:</strong> <code>POST /whatsapp</code></p>
-            <p><strong>Active conversations:</strong> ''' + str(len(bot.conversations)) + '''</p>
-        </div>
-        
-        <div class="endpoint">
-            <h2>🔗 Quick Links</h2>
-            <p><a href="/health">Health Check</a></p>
-            <p><a href="/users">View Users</a></p>
+            <h2>📱 WhatsApp Integration Ready</h2>
+            <p><strong>POST /whatsapp</strong></p>
+            <p>Active conversations: ''' + str(len(bot.conversations)) + '''</p>
         </div>
     </body>
     </html>
@@ -157,22 +150,23 @@ def chat():
         return render_template_string('''
         <!DOCTYPE html>
         <html>
-        <head><title>ZimChem Bot Response</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>
-            body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
-            .question { background: #e3f2fd; padding: 15px; border-radius: 5px; margin: 10px 0; }
-            .response { background: #e8f5e8; padding: 15px; border-radius: 5px; margin: 10px 0; }
-            .back-btn { display: inline-block; padding: 10px 20px; background: #3498db; color: white; text-decoration: none; border-radius: 5px; }
-        </style></head>
+        <head>
+            <title>ZimChem Response</title>
+            <style>
+                body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+                .question { background: #e3f2fd; padding: 15px; border-radius: 5px; margin: 10px 0; }
+                .response { background: #e8f5e8; padding: 15px; border-radius: 5px; margin: 10px 0; }
+                .back { background: #3498db; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; }
+            </style>
+        </head>
         <body>
-            <h1>🧪 ZimChem AI Response</h1>
-            <div class="question"><strong>Your Question:</strong><br>{{ question }}</div>
-            <div class="response"><strong>ZimChem AI:</strong><br>{{ response }}</div>
-            <a href="/" class="back-btn">Ask Another Question</a>
+            <h1>🧪 ZimChem AI</h1>
+            <div class="question"><strong>Question:</strong><br>''' + message + '''</div>
+            <div class="response"><strong>Answer:</strong><br>''' + response + '''</div>
+            <a href="/" class="back">Ask Another</a>
         </body>
         </html>
-        ''', question=message, response=response)
+        ''')
     
     return jsonify({"response": response, "user_id": user_id})
 
@@ -200,36 +194,21 @@ def whatsapp_endpoint():
             "success": True,
             "response": response,
             "user_id": user_id,
-            "timestamp": datetime.now().isoformat(),
-            "model_used": "gpt-4o-mini" if image_data else "gpt-3.5-turbo"
+            "timestamp": datetime.now().isoformat()
         })
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/users', methods=['GET'])
-def get_users():
-    user_stats = {}
-    for user_id, messages in bot.conversations.items():
-        user_stats[user_id] = {
-            "message_count": len(messages) - 1,
-            "last_message": messages[-1]["content"][:100] + "..." if len(messages) > 1 else "No messages"
-        }
-    
-    return jsonify({
-        "active_users": len(bot.conversations),
-        "users": user_stats
-    })
-
-@app.route('/health', methods=['GET'])
+@app.route('/health')
 def health():
     return jsonify({
         "status": "healthy",
-        "active_users": len(bot.conversations),
-        "models": ["gpt-3.5-turbo", "gpt-4o-mini"]
+        "openai_key": "present" if os.getenv('OPENAI_API_KEY') else "missing",
+        "users": len(bot.conversations)
     })
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     print(f"🧪 ZimChem Bot starting on port {port}")
-    app.run(host='0.0.0.0', port=port, debug=False)
+    app.run(host='0.0.0.0', port=port)
