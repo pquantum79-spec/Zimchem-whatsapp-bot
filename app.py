@@ -1,10 +1,12 @@
 from flask import Flask, request, jsonify, render_template_string
+from flask_cors import CORS
 import openai
 import os
 import json
 from datetime import datetime
 
 app = Flask(__name__)
+CORS(app)  # Enable CORS for all routes
 
 class ZimChemBot:
     def __init__(self):
@@ -94,6 +96,7 @@ bot = ZimChemBot()
 
 @app.route('/', methods=['GET'])
 def home():
+    api_key_status = "✅ Connected" if os.getenv('OPENAI_API_KEY') else "❌ Missing API Key"
     return render_template_string('''
     <!DOCTYPE html>
     <html>
@@ -101,36 +104,109 @@ def home():
         <title>ZimChem WhatsApp Bot</title>
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <style>
-            body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
-            .header { color: #2c3e50; text-align: center; }
+            body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background: #f5f5f5; }
+            .container { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+            .header { color: #2c3e50; text-align: center; margin-bottom: 30px; }
             .status { color: #27ae60; font-weight: bold; }
-            .endpoint { background: #ecf0f1; padding: 15px; border-radius: 5px; margin: 10px 0; }
-            .test-form { background: #f8f9fa; padding: 20px; border-radius: 5px; }
-            input[type="text"] { width: 70%; padding: 10px; margin: 5px; }
-            button { padding: 10px 20px; background: #3498db; color: white; border: none; border-radius: 5px; }
+            .error { color: #e74c3c; font-weight: bold; }
+            .endpoint { background: #ecf0f1; padding: 20px; border-radius: 10px; margin: 15px 0; }
+            .test-form { background: #e8f5e8; padding: 25px; border-radius: 10px; margin: 20px 0; }
+            input[type="text"] { width: 70%; padding: 12px; margin: 5px; border: 2px solid #ddd; border-radius: 5px; }
+            button { padding: 12px 25px; background: #3498db; color: white; border: none; border-radius: 5px; cursor: pointer; }
+            button:hover { background: #2980b9; }
         </style>
     </head>
     <body>
-        <div class="header">
-            <h1>🧪 ZimChem WhatsApp Bot</h1>
-            <p>Status: <span class="status">Running</span></p>
-            <p>OpenAI API: ''' + ('✅ Connected' if os.getenv('OPENAI_API_KEY') else '❌ Missing API Key') + '''</p>
+        <div class="container">
+            <div class="header">
+                <h1>🧪 ZimChem WhatsApp Bot</h1>
+                <p>Status: <span class="status">Running</span></p>
+                <p>OpenAI API: <span class="''' + ('status' if os.getenv('OPENAI_API_KEY') else 'error') + '''">''' + api_key_status + '''</span></p>
+            </div>
+            
+            <div class="test-form">
+                <h2>🧪 Quick Test</h2>
+                <form action="/chat" method="post">
+                    <input type="text" name="message" placeholder="Ask a chemistry question..." required>
+                    <input type="hidden" name="user_id" value="web_test">
+                    <button type="submit">Test Bot</button>
+                </form>
+            </div>
+            
+            <div class="endpoint">
+                <h2>📱 API Endpoints</h2>
+                <p><strong>Health Check:</strong> <code>GET /health</code></p>
+                <p><strong>WhatsApp Integration:</strong> <code>POST /whatsapp</code></p>
+                <p><strong>Active conversations:</strong> ''' + str(len(bot.conversations)) + '''</p>
+            </div>
+            
+            <div class="endpoint">
+                <h2>🔗 Test Links</h2>
+                <p><a href="/health" target="_blank">Health Check</a></p>
+                <p><a href="/test-api" target="_blank">API Test Page</a></p>
+            </div>
         </div>
+    </body>
+    </html>
+    ''')
+
+@app.route('/test-api', methods=['GET'])
+def test_api_page():
+    return render_template_string('''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>ZimChem API Test</title>
+        <style>
+            body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+            .test-form { background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 20px 0; }
+            input, button { padding: 10px; margin: 10px; border-radius: 5px; border: 1px solid #ddd; }
+            button { background: #007bff; color: white; cursor: pointer; }
+            .response { background: #e8f5e8; padding: 15px; border-radius: 5px; margin: 10px 0; }
+        </style>
+    </head>
+    <body>
+        <h1>🧪 ZimChem API Test</h1>
         
         <div class="test-form">
-            <h2>Quick Test</h2>
-            <form action="/chat" method="post">
-                <input type="text" name="message" placeholder="Ask a chemistry question..." required>
-                <input type="hidden" name="user_id" value="web_test">
-                <button type="submit">Test Bot</button>
-            </form>
+            <h3>Test the Bot API</h3>
+            <input type="text" id="testMessage" placeholder="Ask a chemistry question..." value="What is H2O?">
+            <button onclick="testAPI()">Send Question</button>
+            <div id="response"></div>
         </div>
         
-        <div class="endpoint">
-            <h2>📱 WhatsApp Integration Ready</h2>
-            <p><strong>POST /whatsapp</strong></p>
-            <p>Active conversations: ''' + str(len(bot.conversations)) + '''</p>
-        </div>
+        <script>
+            async function testAPI() {
+                const message = document.getElementById('testMessage').value;
+                const responseDiv = document.getElementById('response');
+                
+                responseDiv.innerHTML = '⏳ Asking ZimChem...';
+                
+                try {
+                    const response = await fetch('/whatsapp', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            user_id: 'api_test',
+                            message: message
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        responseDiv.className = 'response';
+                        responseDiv.innerHTML = '<strong>ZimChem:</strong> ' + data.response;
+                    } else {
+                        responseDiv.innerHTML = '❌ Error: ' + (data.error || 'Unknown error');
+                    }
+                } catch (error) {
+                    responseDiv.innerHTML = '❌ Connection error: ' + error.message;
+                }
+            }
+        </script>
     </body>
     </html>
     ''')
@@ -170,8 +246,11 @@ def chat():
     
     return jsonify({"response": response, "user_id": user_id})
 
-@app.route('/whatsapp', methods=['POST'])
+@app.route('/whatsapp', methods=['POST', 'OPTIONS'])
 def whatsapp_endpoint():
+    if request.method == 'OPTIONS':
+        return '', 200
+    
     try:
         data = request.get_json()
         
@@ -198,17 +277,18 @@ def whatsapp_endpoint():
         })
         
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": str(e), "success": False}), 500
 
 @app.route('/health')
 def health():
     return jsonify({
         "status": "healthy",
         "openai_key": "present" if os.getenv('OPENAI_API_KEY') else "missing",
-        "users": len(bot.conversations)
+        "users": len(bot.conversations),
+        "endpoints": ["/", "/chat", "/whatsapp", "/health"]
     })
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     print(f"🧪 ZimChem Bot starting on port {port}")
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=port, debug=False)
